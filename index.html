@@ -94,6 +94,38 @@ button:focus-visible, input:focus-visible, .tile:focus-visible { outline: 2px so
 .switch, .check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
 .switch input, .check input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
 
+/* Account switcher: sits above the phone so its menu is not clipped by the rounded frame. */
+.acct { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; min-width: 0; }
+.acct-btn {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%;
+  min-height: 44px; padding: 0 12px 0 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 700 16px/1.2 var(--font-ui); cursor: pointer;
+}
+.acct-btn:hover { border-color: var(--muted); }
+.acct-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-caret { flex: none; color: var(--muted); font-size: 12px; }
+.acct-status { min-width: 0; font-size: 12px; color: var(--muted); text-align: right; }
+.acct-status.warn { color: var(--danger); font-weight: 600; }
+.acct-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+  width: min(100%, 300px); display: grid; gap: 2px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.acct-menu button {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: none;
+  color: var(--ink); font: 500 15px/1.2 var(--font-ui); text-align: left; cursor: pointer;
+}
+.acct-menu button:hover { background: var(--tile-bg); }
+.acct-menu button[aria-checked="true"] { font-weight: 700; }
+.acct-menu button[aria-checked="true"]::after { content: "✓"; flex: none; color: var(--accent); }
+.acct-menu .acct-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-menu .add { color: var(--accent); font-weight: 600; }
+.acct-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--line); }
+.confirm { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+
 /* Phone + grid */
 .phone { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; transition: outline-color 0.15s; outline: 2px dashed transparent; outline-offset: 4px; }
 body.dropping .phone { outline-color: var(--accent); }
@@ -207,6 +239,13 @@ body.dropping .phone { outline-color: var(--accent); }
     </section>
 
     <section class="gridcol" aria-label="그리드 미리보기">
+      <div class="acct" id="acct">
+        <button type="button" class="acct-btn" id="acctBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="acctMenu" aria-label="계정 바꾸기">
+          <span class="acct-name" id="acctName">로컬 · 연결 없음</span><span class="acct-caret" aria-hidden="true">▾</span>
+        </button>
+        <span class="acct-status" id="acctStatus" role="status"></span>
+        <div class="acct-menu" id="acctMenu" role="menu" aria-label="계정" hidden></div>
+      </div>
       <div class="phone">
         <div class="phone-head"><span id="counts">예정 0 · 게시됨 0</span><span id="ratioLabel" class="mono">3:4 · 1080×1440</span></div>
         <div class="example-note" id="exampleNote" hidden>
@@ -225,6 +264,7 @@ body.dropping .phone { outline-color: var(--accent); }
         <li><b>올릴 사진 추가</b>로 새 사진을 넣으면 맨 앞에 붙어요.</li>
         <li>올릴 사진을 끌어서 순서를 바꿔요. 휴대폰에서는 살짝 길게 누른 뒤 끌면 돼요.</li>
         <li>실제로 올렸다면 사진을 눌러 <b>게시 완료</b>를 고르세요. 게시된 피드 맨 앞으로 옮겨져요.</li>
+        <li>계정이 여러 개면 그리드 위 계정 이름을 눌러 바꿔요. 사진과 순서는 계정마다 따로 저장돼요.</li>
       </ol>
       <h2>인스타 계정 연결</h2>
       <div class="ig">
@@ -234,6 +274,7 @@ body.dropping .phone { outline-color: var(--accent); }
             <input id="igToken" type="password" autocomplete="off" spellcheck="false" placeholder="액세스 토큰 붙여넣기" aria-label="Instagram 액세스 토큰">
             <button type="button" class="btn" id="igConnect">연결</button>
           </div>
+          <button type="button" class="link" id="igAddCancel" hidden>계정 추가 그만두기</button>
           <details class="howto">
             <summary>토큰 받는 법</summary>
             <ol class="steps">
@@ -248,14 +289,24 @@ body.dropping .phone { outline-color: var(--accent); }
           <p class="note"><b id="igUser"></b> 연결됨 · <span id="igExpiry"></span></p>
           <div class="btn-row">
             <button type="button" class="btn" id="igReload">피드 다시 불러오기</button>
-            <button type="button" class="btn" id="igDisconnect">연결 끊기</button>
+            <button type="button" class="btn" id="igDisconnect">이 계정 연결 끊기</button>
+          </div>
+          <div class="confirm" id="igForget" hidden>
+            <p class="note"><b id="igForgetUser"></b> 연결을 끊을까요? 이 계정 그리드에 넣은 사진은 어떻게 할까요?</p>
+            <div class="btn-row">
+              <button type="button" class="btn" id="igForgetKeep">사진은 남기기</button>
+              <button type="button" class="btn danger" id="igForgetDrop">사진도 지우기</button>
+              <button type="button" class="btn" id="igForgetCancel">취소</button>
+            </div>
+            <p class="hint">남겨 두면 같은 계정을 다시 연결할 때 그대로 돌아와요.</p>
           </div>
         </div>
         <p class="note warn" id="igError" hidden></p>
       </div>
       <h2>저장</h2>
-      <p class="note" id="storageNote">사진은 이 기기의 이 브라우저 안에만 저장돼요. 서버로 보내지 않아요. 브라우저 데이터를 지우면 함께 지워져요.</p>
-      <button type="button" class="btn danger" id="clearAll">모든 사진 지우기</button>
+      <p class="note" id="storageNote">사진은 계정마다 따로, 이 기기의 이 브라우저 안에만 저장돼요. 서버로 보내지 않아요. 브라우저 데이터를 지우면 함께 지워져요.</p>
+      <p class="note" id="persistNote" hidden></p>
+      <button type="button" class="btn danger" id="clearAll">이 그리드의 사진 모두 지우기</button>
     </section>
   </main>
 </div>
@@ -323,7 +374,8 @@ body.dropping .phone { outline-color: var(--accent); }
     '11': { css: '1 / 1', label: '1:1 · 1080×1080', h: 1 },
   };
   // plan[0] is the top-left tile: the newest post, so it is posted last.
-  const state = { items: new Map(), plan: [], existing: [], examples: false, ratio: '34', badges: true };
+  // acct is the grid on screen: an Instagram user_id, or LOCAL for use without a connection.
+  const state = { acct: 'local', items: new Map(), plan: [], existing: [], examples: false, ratio: '34', badges: true };
   let db = null;
   let dragging = false;
 
@@ -350,15 +402,31 @@ body.dropping .phone { outline-color: var(--accent); }
   const reqP = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const txDone = (tx) => new Promise((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
 
-  async function openDB() {
+  // Version 2 tags every photo with the account it belongs to; legacyAcct receives the single grid of version 1.
+  async function openDB(legacyAcct) {
     try {
-      const r = indexedDB.open('feed-grid-planner', 1);
-      r.onupgradeneeded = () => {
+      const r = indexedDB.open('feed-grid-planner', 2);
+      r.onupgradeneeded = (e) => {
         const d = r.result;
-        if (!d.objectStoreNames.contains('items')) d.createObjectStore('items', { keyPath: 'id' });
-        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+        const items = d.objectStoreNames.contains('items') ? r.transaction.objectStore('items') : d.createObjectStore('items', { keyPath: 'id' });
+        const meta = d.objectStoreNames.contains('meta') ? r.transaction.objectStore('meta') : d.createObjectStore('meta');
+        if (!items.indexNames.contains('acct')) items.createIndex('acct', 'acct');
+        if (e.oldVersion !== 1) return;
+        items.openCursor().onsuccess = (ev) => {
+          const c = ev.target.result;
+          if (!c) return;
+          if (!c.value.acct) c.update(Object.assign(c.value, { acct: legacyAcct }));
+          c.continue();
+        };
+        meta.get('order').onsuccess = (ev) => {
+          if (ev.target.result) { meta.put(ev.target.result, orderKey(legacyAcct)); meta.delete('order'); }
+        };
       };
+      let blocked = false;
+      r.onblocked = () => { blocked = true; showToast('다른 탭에 열린 피드 그리드 플래너를 닫으면 이어서 열려요.', true); };
       db = await reqP(r);
+      db.onversionchange = () => db.close();
+      if (blocked) $('#toast').hidden = true;
     } catch (e) { db = null; storageFailed(); }
   }
   function storageFailed() {
@@ -375,32 +443,90 @@ body.dropping .phone { outline-color: var(--accent); }
     } catch (e) { storageFailed(); }
   }
   // Imported Instagram posts keep a remote URL instead of a blob; it is refreshed on each load.
-  const record = (it) => ({ id: it.id, kind: it.kind, blob: it.blob, remote: it.remote, igId: it.igId, fit: it.fit, px: it.px, py: it.py });
+  const record = (it) => ({ id: it.id, acct: it.acct, kind: it.kind, blob: it.blob, remote: it.remote, igId: it.igId, fit: it.fit, px: it.px, py: it.py });
   const saveItems = (list) => write((items) => list.filter((i) => !i.example).forEach((i) => items.put(record(i))));
   const deleteItems = (ids) => write((items) => ids.forEach((id) => items.delete(id)));
-  const saveOrder = () => write((_, meta) => meta.put({ plan: state.plan.filter(isReal), existing: state.existing.filter(isReal) }, 'order'));
+  const orderKey = (acct) => `order:${acct}`;
+  const saveOrder = () => write((_, meta) => meta.put({ plan: state.plan.filter(isReal), existing: state.existing.filter(isReal) }, orderKey(state.acct)));
+  // Removes every photo and the order saved under one account.
+  const dropGrid = (acct) => write((items, meta) => {
+    items.index('acct').openCursor(IDBKeyRange.only(acct)).onsuccess = (e) => {
+      const c = e.target.result;
+      if (c) { c.delete(); c.continue(); }
+    };
+    meta.delete(orderKey(acct));
+  });
+  // Moves one account's photos and order under another key (used once a legacy connection's user_id is known).
+  async function rekey(from, to) {
+    if (state.acct === from) {
+      state.acct = to;
+      state.items.forEach((it) => { if (it.acct === from) it.acct = to; });
+    }
+    await write((items, meta) => {
+      items.index('acct').openCursor(IDBKeyRange.only(from)).onsuccess = (e) => {
+        const c = e.target.result;
+        if (c) { c.update(Object.assign(c.value, { acct: to })); c.continue(); }
+      };
+      meta.get(orderKey(from)).onsuccess = (e) => {
+        const o = e.target.result;
+        if (o) { meta.put(o, orderKey(to)); meta.delete(orderKey(from)); }
+      };
+    });
+  }
+
+  let gridSeq = 0;
+  async function loadGrid(acct) {
+    const seq = ++gridSeq;
+    let rows = [];
+    let order = null;
+    if (db) {
+      try {
+        const tx = db.transaction(['items', 'meta']);
+        [rows, order] = await Promise.all([reqP(tx.objectStore('items').index('acct').getAll(acct)), reqP(tx.objectStore('meta').get(orderKey(acct)))]);
+      } catch (e) { storageFailed(); }
+    }
+    if (seq !== gridSeq) return; // another account was picked meanwhile
+    for (const it of state.items.values()) if (it.blob) URL.revokeObjectURL(it.url);
+    state.items.clear();
+    state.examples = false;
+    rows.forEach((r) => { r.url = r.blob ? URL.createObjectURL(r.blob) : r.remote; state.items.set(r.id, r); });
+    const has = (id) => state.items.has(id);
+    state.plan = ((order && order.plan) || []).filter(has);
+    state.existing = ((order && order.existing) || []).filter(has);
+    for (const [id, it] of state.items) {
+      if (!state.plan.includes(id) && !state.existing.includes(id)) (it.kind === 'plan' ? state.plan : state.existing).push(id);
+    }
+    if (!state.items.size) addExamples();
+    render();
+  }
 
   async function load() {
     loadSettings();
     applySettings();
-    await openDB();
-    if (db) {
-      try {
-        const tx = db.transaction(['items', 'meta']);
-        const [rows, order] = await Promise.all([reqP(tx.objectStore('items').getAll()), reqP(tx.objectStore('meta').get('order'))]);
-        rows.forEach((r) => { r.url = r.blob ? URL.createObjectURL(r.blob) : r.remote; state.items.set(r.id, r); });
-        const has = (id) => state.items.has(id);
-        state.plan = ((order && order.plan) || []).filter(has);
-        state.existing = ((order && order.existing) || []).filter(has);
-        for (const [id, it] of state.items) {
-          if (!state.plan.includes(id) && !state.existing.includes(id)) (it.kind === 'plan' ? state.plan : state.existing).push(id);
-        }
-      } catch (e) { storageFailed(); }
-    }
-    if (!state.items.size) addExamples();
-    render();
+    persistStorage();
+    const old = readLegacyConnection();
+    await openDB(old && old.token ? LEGACY : LOCAL);
+    migrateAccounts(old);
+    await loadGrid(state.acct);
     initSortable();
-    igInit();
+    igRender();
+    // Instagram image links expire, so pull fresh ones every time the page opens.
+    const acc = current();
+    if (acc) igReload(acc, true);
+  }
+
+  /* ---------- storage persistence ---------- */
+  async function persistStorage() {
+    const s = navigator.storage;
+    if (!s || !s.persist) return;
+    try {
+      const ok = (s.persisted && await s.persisted()) || await s.persist();
+      const n = $('#persistNote');
+      n.textContent = ok
+        ? '이 브라우저가 데이터를 자동으로 지우지 않도록 설정됐어요.'
+        : '저장 공간이 모자라면 브라우저가 이 데이터를 지울 수도 있어요. 이 페이지를 북마크해 두고 자주 열면 다음에 보호받을 가능성이 커져요.';
+      n.hidden = false;
+    } catch (e) { /* not supported here */ }
   }
 
   /* ---------- example feed (shown only until real photos arrive) ---------- */
@@ -517,18 +643,29 @@ body.dropping .phone { outline-color: var(--accent); }
       return await toBlob(c, 0.9);
     } finally { URL.revokeObjectURL(url); }
   }
-  const newItem = (blob, kind) => ({ id: uid(), kind, blob, fit: 'fill', px: 50, py: 50, url: URL.createObjectURL(blob) });
+  const newItem = (blob, kind, acct) => ({ id: uid(), acct, kind, blob, fit: 'fill', px: 50, py: 50, url: URL.createObjectURL(blob) });
 
   async function addPhotos(files) {
     const list = Array.from(files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
     if (!list.length) return;
     showToast(`사진 ${list.length}장을 준비하는 중…`, true);
+    const acct = state.acct;
     const added = [];
     let failed = 0;
     for (const f of list) {
-      try { added.push(newItem(await downscale(f, 1440), 'plan')); } catch (e) { failed++; }
+      try { added.push(newItem(await downscale(f, 1440), 'plan', acct)); } catch (e) { failed++; }
     }
-    if (added.length) {
+    if (added.length && acct !== state.acct) {
+      // The account changed while photos were being prepared: they still go to the grid they were added to.
+      added.forEach((it) => URL.revokeObjectURL(it.url));
+      await write((items, meta) => {
+        added.forEach((it) => items.put(record(it)));
+        meta.get(orderKey(acct)).onsuccess = (e) => {
+          const o = e.target.result || { plan: [], existing: [] };
+          meta.put({ plan: added.map((i) => i.id).concat(o.plan), existing: o.existing }, orderKey(acct));
+        };
+      });
+    } else if (added.length) {
       clearExamples();
       added.forEach((it) => state.items.set(it.id, it));
       state.plan = added.map((i) => i.id).concat(state.plan);
@@ -764,7 +901,7 @@ body.dropping .phone { outline-color: var(--accent); }
         for (let col = 0; col < 3; col++) {
           x.clearRect(0, 0, c.width, c.height);
           x.drawImage(sl.img, col * (m.colW + m.g), sl.top + r * (m.tileH + m.g), m.colW, m.tileH, 0, 0, c.width, c.height);
-          out.push(newItem(await toBlob(c, 0.92), 'existing'));
+          out.push(newItem(await toBlob(c, 0.92), 'existing', state.acct));
         }
       }
       clearExamples();
@@ -789,21 +926,109 @@ body.dropping .phone { outline-color: var(--accent); }
     }
   });
 
+  /* ---------- accounts: each connected Instagram account, and local use, keeps its own grid ---------- */
+  const LOCAL = 'local';
+  const LEGACY = 'legacy'; // a connection saved before accounts existed, until its user_id is looked up
+  let accounts = []; // [{ id, username, token, refreshedAt, expiresAt }]
+  let adding = false;
+  const accountOf = (id) => accounts.find((a) => a.id === id) || null;
+  const current = () => accountOf(state.acct);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function readLegacyConnection() {
+    try { return JSON.parse(localStorage.getItem('fgp-ig') || 'null'); } catch (e) { return null; }
+  }
+  function saveAccounts() {
+    try { localStorage.setItem('fgp-accounts', JSON.stringify({ current: state.acct, list: accounts })); } catch (e) { /* storage blocked: accounts last for this visit only */ }
+  }
+  // Reads the saved accounts; on the first run after accounts existed, turns the old single connection into one.
+  function migrateAccounts(old) {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('fgp-accounts') || 'null'); } catch (e) { /* storage blocked */ }
+    if (saved) {
+      accounts = Array.isArray(saved.list) ? saved.list : [];
+      state.acct = accountOf(saved.current) ? saved.current : LOCAL;
+      return;
+    }
+    accounts = old && old.token
+      ? [{ id: LEGACY, username: old.username, token: old.token, refreshedAt: old.refreshedAt || Date.now(), expiresAt: old.expiresAt || null }]
+      : [];
+    state.acct = accounts.length ? LEGACY : LOCAL;
+    saveAccounts();
+    try { if (localStorage.getItem('fgp-accounts')) localStorage.removeItem('fgp-ig'); } catch (e) { /* storage blocked */ }
+  }
+
+  /* ---------- account switcher ---------- */
+  function setStatus(text, warn) {
+    const s = $('#acctStatus');
+    s.textContent = text || '';
+    s.classList.toggle('warn', !!warn);
+  }
+  function renderSwitcher() {
+    const acc = current();
+    $('#acctName').textContent = acc ? `@${acc.username}` : '로컬 · 연결 없음';
+    const pick = (id, label) => `<button type="button" role="menuitemradio" aria-checked="${id === state.acct}" data-acct="${esc(id)}"><span class="acct-label">${label}</span></button>`;
+    $('#acctMenu').innerHTML = accounts.map((a) => pick(a.id, `@${esc(a.username)}`)).join('') +
+      '<button type="button" role="menuitem" class="add" data-acct-add>+ 계정 추가</button>' +
+      '<hr>' + pick(LOCAL, '연결 없이 쓰기(로컬)');
+  }
+  function setMenu(open) {
+    $('#acctMenu').hidden = !open;
+    $('#acctBtn').setAttribute('aria-expanded', String(open));
+    if (open) ($('#acctMenu [aria-checked="true"]') || $('#acctMenu button')).focus({ preventScroll: true });
+  }
+  $('#acctBtn').addEventListener('click', () => setMenu($('#acctMenu').hidden));
+  $('#acctMenu').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    setMenu(false);
+    $('#acctBtn').focus({ preventScroll: true });
+    if (b.hasAttribute('data-acct-add')) startAdding();
+    else switchAccount(b.dataset.acct);
+  });
+  $('#acctMenu').addEventListener('keydown', (e) => {
+    const list = Array.from($('#acctMenu').querySelectorAll('button'));
+    const i = list.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length].focus();
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      if (e.key === 'Escape') { e.stopPropagation(); $('#acctBtn').focus(); }
+      setMenu(false);
+    }
+  });
+  document.addEventListener('click', (e) => { if (!$('#acctMenu').hidden && !e.target.closest('#acct')) setMenu(false); });
+
+  async function switchAccount(id) {
+    if (id !== LOCAL && !accountOf(id)) return;
+    adding = false;
+    $('#igForget').hidden = true;
+    igShowError(null);
+    if (id !== state.acct) {
+      state.acct = id;
+      saveAccounts();
+      igRender();
+      await loadGrid(id);
+    }
+    igRender();
+    // Picking an account always pulls its posts again, since Instagram image links expire.
+    const acc = current();
+    if (acc) igReload(acc, true);
+    else setStatus('');
+  }
+  function startAdding() {
+    adding = true;
+    igShowError(null);
+    igRender();
+    $('#igToken').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    $('#igToken').focus({ preventScroll: true });
+  }
+
   /* ---------- Instagram connection (token pasted from the Meta App Dashboard) ---------- */
   const IG_BASE = 'https://graph.instagram.com';
   const IG_MAX_POSTS = 60;
   const DAY = 24 * 3600 * 1000;
-  let ig = null; // { token, username, refreshedAt, expiresAt }
 
-  function igRead() {
-    try { return JSON.parse(localStorage.getItem('fgp-ig') || 'null'); } catch (e) { return null; }
-  }
-  function igWrite() {
-    try {
-      if (ig) localStorage.setItem('fgp-ig', JSON.stringify(ig));
-      else localStorage.removeItem('fgp-ig');
-    } catch (e) { /* storage blocked: the connection lasts for this visit only */ }
-  }
   const igError = (kind, message) => Object.assign(new Error(message || kind), { kind });
   async function igFetch(url) {
     let res;
@@ -831,33 +1056,49 @@ body.dropping .phone { outline-color: var(--accent); }
     box.hidden = false;
   }
   function igRender() {
-    $('#igOff').hidden = !!ig;
-    $('#igOn').hidden = !ig;
-    $('#igQuickReload').hidden = !ig;
-    if (!ig) return;
-    $('#igUser').textContent = `@${ig.username}`;
-    $('#igExpiry').textContent = ig.expiresAt
-      ? `토큰 만료 ${new Date(ig.expiresAt).toLocaleDateString('ko-KR')} (열 때마다 자동 연장)`
-      : '토큰은 하루 뒤부터 열 때마다 자동 연장돼요';
+    const acc = current();
+    $('#igOff').hidden = !!acc && !adding;
+    $('#igOn').hidden = !acc || adding;
+    $('#igAddCancel').hidden = !(acc && adding);
+    $('#igQuickReload').hidden = !acc;
+    if (acc) {
+      $('#igUser').textContent = `@${acc.username}`;
+      $('#igExpiry').textContent = acc.expiresAt
+        ? `토큰 만료 ${new Date(acc.expiresAt).toLocaleDateString('ko-KR')} (열 때마다 자동 연장)`
+        : '토큰은 하루 뒤부터 열 때마다 자동 연장돼요';
+    }
+    renderSwitcher();
   }
 
   // Long-lived tokens last 60 days and can be refreshed once they are at least 24 hours old.
-  async function igMaybeRefresh() {
-    if (!ig || Date.now() - ig.refreshedAt < 3 * DAY) return;
-    const r = await igGet('/refresh_access_token', { grant_type: 'ig_refresh_token', access_token: ig.token });
-    ig.token = r.access_token;
-    ig.refreshedAt = Date.now();
-    if (r.expires_in) ig.expiresAt = Date.now() + r.expires_in * 1000;
-    igWrite();
+  async function igMaybeRefresh(acc) {
+    if (Date.now() - acc.refreshedAt < 3 * DAY) return;
+    const r = await igGet('/refresh_access_token', { grant_type: 'ig_refresh_token', access_token: acc.token });
+    acc.token = r.access_token;
+    acc.refreshedAt = Date.now();
+    if (r.expires_in) acc.expiresAt = Date.now() + r.expires_in * 1000;
+    saveAccounts();
+    igRender();
+  }
+  // A connection carried over from before accounts has no user_id yet: look it up once and file its photos under it.
+  async function igResolveLegacy(acc) {
+    const me = await igGet('/me', { fields: 'user_id,username', access_token: acc.token });
+    const id = String(me.user_id || me.id);
+    accounts = accounts.filter((a) => a === acc || a.id !== id);
+    await rekey(LEGACY, id);
+    acc.id = id;
+    if (me.username) acc.username = me.username;
+    saveAccounts();
     igRender();
   }
 
-  async function igImport() {
+  // Returns the number of posts, or null when another account was picked before they arrived.
+  async function igImport(acc) {
     const posts = [];
     let page = await igGet('/me/media', {
       fields: 'id,media_type,media_url,thumbnail_url,timestamp',
       limit: '50',
-      access_token: ig.token,
+      access_token: acc.token,
     });
     for (;;) {
       posts.push(...(page.data || []));
@@ -865,6 +1106,7 @@ body.dropping .phone { outline-color: var(--accent); }
       if (!next || posts.length >= IG_MAX_POSTS) break;
       page = await igFetch(next);
     }
+    if (current() !== acc) return null;
     // Keep each post's crop settings across reloads.
     const prev = new Map();
     for (const it of state.items.values()) if (it.igId) prev.set(it.igId, it);
@@ -874,7 +1116,7 @@ body.dropping .phone { outline-color: var(--accent); }
       if (!src) continue;
       const old = prev.get(m.id);
       fresh.push({
-        id: `ig-${m.id}`, kind: 'existing', remote: src, url: src, igId: m.id,
+        id: `ig-${m.id}`, acct: acc.id, kind: 'existing', remote: src, url: src, igId: m.id,
         fit: old ? old.fit : 'fill', px: old ? old.px : 50, py: old ? old.py : 50,
       });
     }
@@ -901,48 +1143,81 @@ body.dropping .phone { outline-color: var(--accent); }
     const btn = $('#igConnect');
     btn.disabled = true;
     igShowError(null);
+    let acc = null;
     try {
       const me = await igGet('/me', { fields: 'user_id,username', access_token: token });
-      ig = { token, username: me.username, refreshedAt: Date.now(), expiresAt: null };
-      igWrite();
+      const id = String(me.user_id || me.id);
+      const conn = { token, username: me.username, refreshedAt: Date.now(), expiresAt: null };
+      acc = accountOf(id);
+      const known = !!acc;
+      const legacy = accountOf(LEGACY);
+      if (!acc && legacy && legacy.username === me.username) {
+        await rekey(LEGACY, id);
+        legacy.id = id;
+        acc = legacy;
+      }
+      // Reconnecting a known account only swaps its token; its photos stay as they are.
+      if (acc) Object.assign(acc, conn);
+      else { acc = Object.assign({ id }, conn); accounts.push(acc); }
+      const leftLocal = state.acct === LOCAL && state.plan.concat(state.existing).some(isReal);
       $('#igToken').value = '';
+      adding = false;
+      if (state.acct !== id) { state.acct = id; await loadGrid(id); }
+      saveAccounts();
       igRender();
-      const n = await igImport();
-      showToast(`@${ig.username}의 게시물 ${n}개를 불러왔어요.`);
+      setStatus('게시물 불러오는 중…');
+      const n = await igImport(acc);
+      if (n === null) return;
+      setStatus('');
+      showToast(known
+        ? `@${acc.username}의 토큰을 바꾸고 게시물 ${n}개를 다시 불러왔어요.`
+        : `@${acc.username}의 게시물 ${n}개를 불러왔어요.${leftLocal ? ' 로컬 그리드의 사진은 그대로 남아 있어요.' : ''}`);
     } catch (e) {
       igShowError(e);
+      if (acc && current() === acc) setStatus('피드를 불러오지 못했어요', true);
     } finally {
       btn.disabled = false;
     }
   }
-  async function igReload(quiet) {
-    if (!ig) return;
+  async function igReload(acc, quiet) {
     igShowError(null);
+    setStatus('게시물 불러오는 중…');
     try {
-      await igMaybeRefresh();
-      const n = await igImport();
+      if (acc.id === LEGACY) await igResolveLegacy(acc);
+      await igMaybeRefresh(acc);
+      const n = await igImport(acc);
+      if (n === null) return;
+      setStatus('');
       if (!quiet) showToast(`게시물 ${n}개를 다시 불러왔어요.`);
     } catch (e) {
+      if (current() !== acc) return;
       igShowError(e);
+      setStatus('피드를 불러오지 못했어요', true);
     }
   }
-  function igInit() {
-    ig = igRead();
-    igRender();
-    // Instagram image links expire, so pull fresh ones every time the page opens.
-    if (ig) igReload(true);
+  async function forgetAccount(dropPhotos) {
+    const acc = current();
+    if (!acc) return;
+    accounts = accounts.filter((a) => a !== acc);
+    if (dropPhotos) await dropGrid(acc.id);
+    await switchAccount(accounts.length ? accounts[0].id : LOCAL);
+    showToast(dropPhotos
+      ? `@${acc.username} 연결을 끊고 사진도 지웠어요.`
+      : `@${acc.username} 연결을 끊었어요. 사진은 남겨 뒀다가 같은 계정을 다시 연결하면 돌려놓을게요.`);
   }
   $('#igConnect').addEventListener('click', igConnect);
   $('#igToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') igConnect(); });
-  $('#igReload').addEventListener('click', () => igReload(false));
-  $('#igQuickReload').addEventListener('click', () => igReload(false));
+  $('#igAddCancel').addEventListener('click', () => { adding = false; $('#igToken').value = ''; igShowError(null); igRender(); });
+  $('#igReload').addEventListener('click', () => { if (current()) igReload(current(), false); });
+  $('#igQuickReload').addEventListener('click', () => { if (current()) igReload(current(), false); });
   $('#igDisconnect').addEventListener('click', () => {
-    ig = null;
-    igWrite();
-    igRender();
-    igShowError(null);
-    showToast('연결을 끊었어요. 불러온 사진은 그대로 남지만, 며칠 지나면 이미지가 안 보일 수 있어요.');
+    $('#igForgetUser').textContent = `@${current().username}`;
+    $('#igForget').hidden = false;
+    $('#igForgetKeep').focus();
   });
+  $('#igForgetCancel').addEventListener('click', () => { $('#igForget').hidden = true; $('#igDisconnect').focus(); });
+  $('#igForgetKeep').addEventListener('click', () => forgetAccount(false));
+  $('#igForgetDrop').addEventListener('click', () => forgetAccount(true));
 
   /* ---------- top-level controls ---------- */
   $('#addPhotosBtn').addEventListener('click', () => $('#pickPhotos').click());
@@ -959,19 +1234,19 @@ body.dropping .phone { outline-color: var(--accent); }
     if (!b.dataset.armed) {
       b.dataset.armed = '1';
       b.textContent = '한 번 더 누르면 모두 지워요';
-      setTimeout(() => { delete b.dataset.armed; b.textContent = '모든 사진 지우기'; }, 4000);
+      setTimeout(() => { delete b.dataset.armed; b.textContent = '이 그리드의 사진 모두 지우기'; }, 4000);
       return;
     }
     delete b.dataset.armed;
-    b.textContent = '모든 사진 지우기';
+    b.textContent = '이 그리드의 사진 모두 지우기';
     for (const it of state.items.values()) if (!it.example) URL.revokeObjectURL(it.url);
     state.items.clear();
     state.plan = [];
     state.existing = [];
     state.examples = false;
     render();
-    await write((items, meta) => { items.clear(); meta.clear(); });
-    showToast('모든 사진을 지웠어요.');
+    await dropGrid(state.acct);
+    showToast('이 그리드의 사진을 모두 지웠어요. 다른 계정의 사진은 그대로예요.');
   });
 
   window.addEventListener('dragover', (e) => {
