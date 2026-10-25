@@ -1,0 +1,1009 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>피드 그리드 플래너</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a phone-width profile grid as the work surface, with controls beside it on desktop and above/below it on phones. */
+:root {
+  --bg: #ECEEF2;
+  --surface: #FFFFFF;
+  --ink: #15171C;
+  --muted: #5D6472;
+  --line: #D5D9E0;
+  --accent: #A3245E;
+  --accent-ink: #FFFFFF;
+  --tile-bg: #E4E7EC;
+  --scrim: rgba(12, 14, 18, 0.55);
+  --danger: #B42318;
+  --font-ui: "IBM Plex Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101216; --surface: #181A1F; --ink: #ECEEF2; --muted: #9AA1AE; --line: #2A2E36;
+    --accent: #F07AAE; --accent-ink: #2A0716; --tile-bg: #23262D; --scrim: rgba(0, 0, 0, 0.65); --danger: #FF8A80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101216; --surface: #181A1F; --ink: #ECEEF2; --muted: #9AA1AE; --line: #2A2E36;
+  --accent: #F07AAE; --accent-ink: #2A0716; --tile-bg: #23262D; --scrim: rgba(0, 0, 0, 0.65); --danger: #FF8A80;
+  color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.55; }
+body.locked { overflow: hidden; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.wrap {
+  max-width: 940px; margin: 0 auto;
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.top { display: grid; gap: 6px; margin-bottom: 24px; }
+h1 { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 52ch; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
+
+.app { display: grid; gap: 20px; grid-template-areas: "actions" "grid" "info"; }
+.actions { grid-area: actions; }
+.gridcol { grid-area: grid; min-width: 0; }
+.info { grid-area: info; }
+@media (min-width: 820px) {
+  .app { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); grid-template-areas: "grid actions" "grid info"; grid-template-rows: auto 1fr; column-gap: 40px; align-items: start; }
+  .gridcol { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+}
+.panel { display: grid; gap: 14px; align-content: start; min-width: 0; }
+
+/* Controls */
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-row.end { justify-content: flex-end; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 500 15px/1 var(--font-ui); cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.danger { color: var(--danger); }
+.btn.danger[data-armed] { background: var(--danger); color: var(--surface); border-color: var(--danger); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.link { background: none; border: 0; padding: 4px 0; color: var(--accent); font: 600 13px/1.2 var(--font-ui); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+button:focus-visible, input:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { margin: 0; font-size: 13px; color: var(--muted); }
+
+.view-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.seg.full { display: flex; }
+.seg.full button { flex: 1; }
+.seg button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 7px; background: none; color: var(--muted); font: 600 14px/1 var(--font-ui); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.switch, .check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.switch input, .check input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+
+/* Phone + grid */
+.phone { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; transition: outline-color 0.15s; outline: 2px dashed transparent; outline-offset: 4px; }
+body.dropping .phone { outline-color: var(--accent); }
+.phone-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.phone-head #counts { font-weight: 600; }
+.phone-head .mono { color: var(--muted); font-size: 12px; }
+.example-note { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; --ratio: 3 / 4; }
+.tile {
+  position: relative; aspect-ratio: var(--ratio); max-width: 100%; overflow: hidden;
+  background: var(--tile-bg); cursor: grab; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+.tile img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.grid:not(.clean) .tile.plan::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
+.badge {
+  position: absolute; top: 6px; left: 6px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--accent); color: var(--accent-ink); font: 500 12px/22px var(--font-mono); text-align: center;
+}
+.grid.clean .badge { display: none; }
+.tile.is-ghost { opacity: 0.3; }
+.sortable-fallback { opacity: 0.92 !important; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35); }
+.grid-empty { grid-column: 1 / -1; margin: 0; padding: 56px 24px; text-align: center; color: var(--muted); font-size: 14px; }
+.grid-foot { margin: 10px 2px 0; font-size: 13px; color: var(--muted); }
+
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; max-width: 60ch; }
+.steps li::marker { font-family: var(--font-mono); color: var(--muted); }
+.note { margin: 0; font-size: 14px; max-width: 60ch; }
+.note.warn { color: var(--danger); font-weight: 600; }
+.info .btn { justify-self: start; }
+.ig { display: grid; gap: 10px; }
+.token-row { display: flex; gap: 8px; }
+.token-row input {
+  flex: 1; min-width: 0; height: 44px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 13px var(--font-mono);
+}
+.howto summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
+.howto .steps { margin-top: 8px; font-size: 14px; }
+
+/* Sheets */
+.sheet {
+  position: fixed; inset: 0; z-index: 50; background: var(--scrim);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+}
+.sheet-card {
+  width: 100%; max-width: 480px; max-height: 100%; overflow: auto; display: grid; gap: 14px;
+  background: var(--surface); border-radius: 18px 18px 0 0;
+  padding-top: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.sheet-card.wide { max-width: 560px; }
+@media (min-width: 640px) {
+  .sheet { align-items: center; padding: 24px; }
+  .sheet-card { border-radius: 18px; padding: 20px; }
+}
+.sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.sheet-head h2 { font-size: 17px; color: var(--ink); letter-spacing: 0; }
+.icon-btn { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: none; color: var(--ink); font-size: 16px; cursor: pointer; }
+
+.ed-frame { width: min(100%, 240px); justify-self: center; aspect-ratio: 3 / 4; max-width: 100%; overflow: hidden; background: var(--tile-bg); border-radius: 4px; cursor: move; touch-action: none; }
+.ed-frame img { display: block; width: 100%; height: 100%; pointer-events: none; user-select: none; }
+.range { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 12px; font-size: 14px; }
+.range input { width: 100%; accent-color: var(--accent); }
+
+.sl-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.stepper { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.stepper button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 16px; cursor: pointer; }
+.stepper output { min-width: 34px; text-align: center; color: var(--ink); font-family: var(--font-mono); font-size: 13px; }
+.sl-scroll { max-height: 58vh; overflow: auto; border-radius: 8px; background: var(--tile-bg); }
+.sl-stage { position: relative; width: min(100%, 380px); margin: 0 auto; overflow: hidden; cursor: crosshair; }
+.sl-stage img { display: block; width: 100%; user-select: none; -webkit-user-select: none; }
+.sl-box { position: absolute; left: 0; right: 0; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); outline: 2px solid var(--accent); cursor: grab; touch-action: none; }
+.sl-cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 100%; }
+.sl-cells span { outline: 1px dashed rgba(255, 255, 255, 0.95); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); }
+
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 60;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  max-width: min(92vw, 420px); padding: 12px 16px; border-radius: 10px;
+  background: var(--ink); color: var(--surface); font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>피드 그리드 플래너</h1>
+    <p class="lede">올리기 전에 3:4 프로필 그리드에서 어떻게 보일지 미리 맞춰 보세요. 사진은 이 브라우저 밖으로 나가지 않아요.</p>
+  </header>
+
+  <main class="app">
+    <section class="actions panel" aria-label="사진 추가와 보기 설정">
+      <div class="btn-row">
+        <button type="button" class="btn primary" id="addPhotosBtn">올릴 사진 추가</button>
+        <button type="button" class="btn" id="addShotBtn">프로필 스크린샷 가져오기</button>
+        <button type="button" class="btn" id="igQuickReload" hidden>인스타에서 다시 불러오기</button>
+        <input id="pickPhotos" type="file" accept="image/*" multiple class="sr-only" tabindex="-1" aria-hidden="true">
+        <input id="pickShot" type="file" accept="image/*" class="sr-only" tabindex="-1" aria-hidden="true">
+      </div>
+      <p class="hint">PC에서는 사진을 화면에 끌어다 놓거나, 스크린샷을 붙여넣기(Ctrl+V)해도 돼요.</p>
+      <div class="view-row">
+        <div class="seg" role="group" aria-label="그리드 비율">
+          <button type="button" data-ratio="34">3:4</button>
+          <button type="button" data-ratio="11">1:1</button>
+        </div>
+        <label class="switch"><input type="checkbox" id="badges"><span>올릴 사진 표시</span></label>
+      </div>
+    </section>
+
+    <section class="gridcol" aria-label="그리드 미리보기">
+      <div class="phone">
+        <div class="phone-head"><span id="counts">예정 0 · 게시됨 0</span><span id="ratioLabel" class="mono">3:4 · 1080×1440</span></div>
+        <div class="example-note" id="exampleNote" hidden>
+          <span>예시 피드예요. 사진을 넣으면 사라져요.</span>
+          <button type="button" class="link" id="clearExamples">예시 지우기</button>
+        </div>
+        <div class="grid" id="grid"></div>
+      </div>
+      <p class="grid-foot">테두리와 숫자가 있는 칸이 올릴 사진이고, 숫자는 올릴 순서예요. 끌어서 순서를 바꾸고, 눌러서 크롭을 맞추세요.</p>
+    </section>
+
+    <section class="info panel" aria-label="쓰는 법과 저장">
+      <h2>쓰는 법</h2>
+      <ol class="steps">
+        <li>지금 피드를 넣어요. 아래에서 <b>인스타 계정을 연결</b>하거나, 프로필 화면을 캡처해서 <b>프로필 스크린샷 가져오기</b>로 넣으면 칸별로 잘려 들어와요.</li>
+        <li><b>올릴 사진 추가</b>로 새 사진을 넣으면 맨 앞에 붙어요.</li>
+        <li>올릴 사진을 끌어서 순서를 바꿔요. 휴대폰에서는 살짝 길게 누른 뒤 끌면 돼요.</li>
+        <li>실제로 올렸다면 사진을 눌러 <b>게시 완료</b>를 고르세요. 게시된 피드 맨 앞으로 옮겨져요.</li>
+      </ol>
+      <h2>인스타 계정 연결</h2>
+      <div class="ig">
+        <div class="ig" id="igOff">
+          <p class="note">크리에이터·비즈니스 계정이면 게시된 피드를 바로 불러올 수 있어요. Meta 개발자 대시보드에서 발급한 액세스 토큰을 붙여넣으세요. 토큰은 이 브라우저에만 저장돼요.</p>
+          <div class="token-row">
+            <input id="igToken" type="password" autocomplete="off" spellcheck="false" placeholder="액세스 토큰 붙여넣기" aria-label="Instagram 액세스 토큰">
+            <button type="button" class="btn" id="igConnect">연결</button>
+          </div>
+          <details class="howto">
+            <summary>토큰 받는 법</summary>
+            <ol class="steps">
+              <li>인스타 앱 설정에서 계정을 크리에이터(또는 비즈니스) 계정으로 바꿔요. 계정이 공개 상태여야 해요.</li>
+              <li>developers.facebook.com에서 앱을 만들어요. 사용 사례는 '기타', 앱 유형은 '비즈니스'를 골라요.</li>
+              <li>앱의 제품 목록에서 Instagram을 설정하고, 'Instagram 로그인을 사용한 API 설정' 화면에서 내 계정을 추가해요.</li>
+              <li>같은 화면에서 내 계정 옆의 토큰 생성 버튼을 눌러 나온 토큰을 위 칸에 붙여넣어요.</li>
+            </ol>
+          </details>
+        </div>
+        <div class="ig" id="igOn" hidden>
+          <p class="note"><b id="igUser"></b> 연결됨 · <span id="igExpiry"></span></p>
+          <div class="btn-row">
+            <button type="button" class="btn" id="igReload">피드 다시 불러오기</button>
+            <button type="button" class="btn" id="igDisconnect">연결 끊기</button>
+          </div>
+        </div>
+        <p class="note warn" id="igError" hidden></p>
+      </div>
+      <h2>저장</h2>
+      <p class="note" id="storageNote">사진은 이 기기의 이 브라우저 안에만 저장돼요. 서버로 보내지 않아요. 브라우저 데이터를 지우면 함께 지워져요.</p>
+      <button type="button" class="btn danger" id="clearAll">모든 사진 지우기</button>
+    </section>
+  </main>
+</div>
+
+<div class="sheet" id="editor" hidden role="dialog" aria-modal="true" aria-labelledby="edTitle">
+  <div class="sheet-card">
+    <div class="sheet-head"><h2 id="edTitle">사진</h2><button type="button" class="icon-btn" data-close aria-label="닫기">✕</button></div>
+    <div class="ed-frame" id="edFrame"><img id="edImg" alt="" draggable="false"></div>
+    <p class="hint">사진을 끌어서 그리드에 보이는 부분을 옮길 수 있어요.</p>
+    <div class="seg full" role="group" aria-label="그리드에 보이는 방식">
+      <button type="button" id="edFill">채우기</button>
+      <button type="button" id="edFit">전체 보이기</button>
+    </div>
+    <label class="range"><span>가로 위치</span><input type="range" id="edPx" min="0" max="100" step="1"></label>
+    <label class="range"><span>세로 위치</span><input type="range" id="edPy" min="0" max="100" step="1"></label>
+    <div class="btn-row" id="edPlanRow">
+      <button type="button" class="btn" id="edEarlier">← 앞 칸</button>
+      <button type="button" class="btn" id="edLater">뒤 칸 →</button>
+      <button type="button" class="btn primary" id="edPosted">게시 완료</button>
+    </div>
+    <div class="btn-row end">
+      <button type="button" class="btn danger" id="edDelete">사진 지우기</button>
+      <button type="button" class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="slicer" hidden role="dialog" aria-modal="true" aria-labelledby="slTitle">
+  <div class="sheet-card wide">
+    <div class="sheet-head"><h2 id="slTitle">스크린샷에서 피드 자르기</h2><button type="button" class="icon-btn" data-close aria-label="닫기">✕</button></div>
+    <p class="hint">점선 칸을 끌어서 게시물 그리드에 맞추세요. 맞추고 싶은 곳을 누르면 칸이 그쪽으로 옮겨져요.</p>
+    <div class="sl-controls">
+      <div class="seg" role="group" aria-label="스크린샷 속 칸 비율">
+        <button type="button" data-slratio="34">3:4</button>
+        <button type="button" data-slratio="11">1:1</button>
+      </div>
+      <div class="stepper"><span>줄</span><button type="button" id="slRowsMinus" aria-label="줄 줄이기">−</button><output id="slRows">3</output><button type="button" id="slRowsPlus" aria-label="줄 늘리기">+</button></div>
+      <div class="stepper"><span>간격</span><button type="button" id="slGapMinus" aria-label="간격 줄이기">−</button><output id="slGap">3px</output><button type="button" id="slGapPlus" aria-label="간격 늘리기">+</button></div>
+      <div class="stepper"><span>위치</span><button type="button" id="slUp" aria-label="조금 위로">↑</button><button type="button" id="slDown" aria-label="조금 아래로">↓</button></div>
+    </div>
+    <div class="sl-scroll">
+      <div class="sl-stage" id="slStage">
+        <img id="slImg" alt="가져온 프로필 스크린샷" draggable="false">
+        <div class="sl-box" id="slBox"><div class="sl-cells" id="slCells"></div></div>
+      </div>
+    </div>
+    <label class="check" id="slReplaceRow"><input type="checkbox" id="slReplace">지금 있는 게시된 사진을 이걸로 바꾸기</label>
+    <div class="btn-row end">
+      <button type="button" class="btn" data-close>취소</button>
+      <button type="button" class="btn primary" id="slImport">가져오기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const grid = $('#grid');
+  const RATIO = {
+    '34': { css: '3 / 4', label: '3:4 · 1080×1440', h: 4 / 3 },
+    '11': { css: '1 / 1', label: '1:1 · 1080×1080', h: 1 },
+  };
+  // plan[0] is the top-left tile: the newest post, so it is posted last.
+  const state = { items: new Map(), plan: [], existing: [], examples: false, ratio: '34', badges: true };
+  let db = null;
+  let dragging = false;
+
+  const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const isReal = (id) => { const it = state.items.get(id); return !!it && !it.example; };
+
+  /* ---------- settings (per-viewer convenience) ---------- */
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem('fgp-settings') || '{}');
+      if (s.ratio in RATIO) state.ratio = s.ratio;
+      if (typeof s.badges === 'boolean') state.badges = s.badges;
+    } catch (e) { /* storage blocked */ }
+  }
+  function saveSettings() {
+    try { localStorage.setItem('fgp-settings', JSON.stringify({ ratio: state.ratio, badges: state.badges })); } catch (e) { /* storage blocked */ }
+  }
+  function applySettings() {
+    document.querySelectorAll('[data-ratio]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.ratio === state.ratio)));
+    $('#badges').checked = state.badges;
+  }
+
+  /* ---------- IndexedDB ---------- */
+  const reqP = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const txDone = (tx) => new Promise((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+
+  async function openDB() {
+    try {
+      const r = indexedDB.open('feed-grid-planner', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        if (!d.objectStoreNames.contains('items')) d.createObjectStore('items', { keyPath: 'id' });
+        if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
+      };
+      db = await reqP(r);
+    } catch (e) { db = null; storageFailed(); }
+  }
+  function storageFailed() {
+    const n = $('#storageNote');
+    n.textContent = '이 브라우저에 저장하지 못했어요. 페이지를 닫으면 작업이 사라질 수 있어요. 저장 공간이 부족하거나 사생활 보호 모드일 수 있어요.';
+    n.classList.add('warn');
+  }
+  async function write(fn) {
+    if (!db) return;
+    try {
+      const tx = db.transaction(['items', 'meta'], 'readwrite');
+      fn(tx.objectStore('items'), tx.objectStore('meta'));
+      await txDone(tx);
+    } catch (e) { storageFailed(); }
+  }
+  // Imported Instagram posts keep a remote URL instead of a blob; it is refreshed on each load.
+  const record = (it) => ({ id: it.id, kind: it.kind, blob: it.blob, remote: it.remote, igId: it.igId, fit: it.fit, px: it.px, py: it.py });
+  const saveItems = (list) => write((items) => list.filter((i) => !i.example).forEach((i) => items.put(record(i))));
+  const deleteItems = (ids) => write((items) => ids.forEach((id) => items.delete(id)));
+  const saveOrder = () => write((_, meta) => meta.put({ plan: state.plan.filter(isReal), existing: state.existing.filter(isReal) }, 'order'));
+
+  async function load() {
+    loadSettings();
+    applySettings();
+    await openDB();
+    if (db) {
+      try {
+        const tx = db.transaction(['items', 'meta']);
+        const [rows, order] = await Promise.all([reqP(tx.objectStore('items').getAll()), reqP(tx.objectStore('meta').get('order'))]);
+        rows.forEach((r) => { r.url = r.blob ? URL.createObjectURL(r.blob) : r.remote; state.items.set(r.id, r); });
+        const has = (id) => state.items.has(id);
+        state.plan = ((order && order.plan) || []).filter(has);
+        state.existing = ((order && order.existing) || []).filter(has);
+        for (const [id, it] of state.items) {
+          if (!state.plan.includes(id) && !state.existing.includes(id)) (it.kind === 'plan' ? state.plan : state.existing).push(id);
+        }
+      } catch (e) { storageFailed(); }
+    }
+    if (!state.items.size) addExamples();
+    render();
+    initSortable();
+    igInit();
+  }
+
+  /* ---------- example feed (shown only until real photos arrive) ---------- */
+  function exampleImage(i, label) {
+    const c = document.createElement('canvas');
+    c.width = 300; c.height = 400;
+    const x = c.getContext('2d');
+    const hues = [205, 340, 28, 160, 260, 12, 190, 45, 300, 120, 225, 355, 80];
+    const h = hues[i % hues.length];
+    const g = x.createLinearGradient(0, 0, 0, 400);
+    g.addColorStop(0, `hsl(${h} 42% 80%)`);
+    g.addColorStop(1, `hsl(${(h + 28) % 360} 36% 50%)`);
+    x.fillStyle = g; x.fillRect(0, 0, 300, 400);
+    x.fillStyle = `hsl(${h} 60% 94% / 0.85)`;
+    x.beginPath(); x.arc(70 + (i * 53) % 160, 110 + (i * 37) % 110, 44, 0, Math.PI * 2); x.fill();
+    x.fillStyle = `hsl(${(h + 28) % 360} 35% 26% / 0.5)`;
+    x.fillRect(0, 280 - (i * 17) % 60, 300, 160);
+    x.fillStyle = 'rgba(255,255,255,0.95)';
+    x.font = '500 30px "IBM Plex Mono", monospace';
+    x.fillText(label, 20, 376);
+    return c.toDataURL('image/jpeg', 0.85);
+  }
+  function addExamples() {
+    state.examples = true;
+    const mk = (kind, i, label) => {
+      const id = `ex-${kind}-${i}`;
+      state.items.set(id, { id, kind, fit: 'fill', px: 50, py: 50, example: true, url: exampleImage(kind === 'plan' ? i : i + 4, label) });
+      return id;
+    };
+    state.plan = [0, 1, 2, 3].map((i) => mk('plan', i, 'NEW'));
+    state.existing = Array.from({ length: 11 }, (_, i) => mk('existing', i, String(i + 1).padStart(2, '0')));
+  }
+  function clearExamples() {
+    if (!state.examples) return;
+    for (const [id, it] of state.items) if (it.example) state.items.delete(id);
+    state.plan = state.plan.filter((id) => state.items.has(id));
+    state.existing = state.existing.filter((id) => state.items.has(id));
+    state.examples = false;
+  }
+
+  /* ---------- grid ---------- */
+  function tileHTML(it, kind, order) {
+    const fit = it.fit === 'fit' ? 'contain' : 'cover';
+    const label = kind === 'plan' ? `올릴 사진, ${order}번째로 올림` : '게시된 사진';
+    return `<div class="tile ${kind}${it.example ? ' example' : ''}" data-id="${it.id}" role="button" tabindex="0" aria-label="${label}">` +
+      `<img src="${it.url}" alt="" draggable="false" style="object-fit:${fit};object-position:${it.px}% ${it.py}%">` +
+      (kind === 'plan' ? `<span class="badge">${order}</span>` : '') + '</div>';
+  }
+  function render() {
+    const r = RATIO[state.ratio];
+    grid.style.setProperty('--ratio', r.css);
+    grid.classList.toggle('clean', !state.badges);
+    $('#ratioLabel').textContent = r.label;
+    const n = state.plan.length;
+    const html = state.plan.map((id, i) => tileHTML(state.items.get(id), 'plan', n - i))
+      .concat(state.existing.map((id) => tileHTML(state.items.get(id), 'existing')))
+      .join('');
+    grid.innerHTML = html || '<p class="grid-empty">아직 사진이 없어요.<br>프로필 스크린샷으로 지금 피드를 가져오거나, 올릴 사진을 추가하세요.</p>';
+    $('#counts').textContent = `예정 ${n} · 게시됨 ${state.existing.length}`;
+    $('#exampleNote').hidden = !state.examples;
+  }
+  function initSortable() {
+    if (!window.Sortable) return; // reordering still works from the photo sheet
+    Sortable.create(grid, {
+      animation: 150,
+      draggable: '.tile.plan',
+      forceFallback: true,
+      fallbackOnBody: true,
+      fallbackTolerance: 4,
+      delay: 160,
+      delayOnTouchOnly: true,
+      ghostClass: 'is-ghost',
+      onStart() { dragging = true; },
+      onMove(evt) { return !evt.related.classList.contains('existing'); },
+      onEnd() {
+        state.plan = Array.from(grid.querySelectorAll('.tile.plan'), (el) => el.dataset.id);
+        render();
+        saveOrder();
+        setTimeout(() => { dragging = false; }, 60);
+      },
+    });
+  }
+  grid.addEventListener('click', (e) => {
+    if (dragging) return;
+    const t = e.target.closest('.tile');
+    if (t) openEditor(t.dataset.id);
+  });
+  grid.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('tile')) {
+      e.preventDefault();
+      openEditor(e.target.dataset.id);
+    }
+  });
+
+  /* ---------- images ---------- */
+  async function decode(blob) {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.src = url;
+    try { await img.decode(); } catch (e) { URL.revokeObjectURL(url); throw e; }
+    return { img, url };
+  }
+  const toBlob = (c, q) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('encode failed'))), 'image/jpeg', q));
+  async function downscale(file, maxEdge) {
+    const { img, url } = await decode(file);
+    try {
+      const s = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * s);
+      c.height = Math.round(img.naturalHeight * s);
+      const x = c.getContext('2d');
+      x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height);
+      x.drawImage(img, 0, 0, c.width, c.height);
+      return await toBlob(c, 0.9);
+    } finally { URL.revokeObjectURL(url); }
+  }
+  const newItem = (blob, kind) => ({ id: uid(), kind, blob, fit: 'fill', px: 50, py: 50, url: URL.createObjectURL(blob) });
+
+  async function addPhotos(files) {
+    const list = Array.from(files).filter((f) => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+    if (!list.length) return;
+    showToast(`사진 ${list.length}장을 준비하는 중…`, true);
+    const added = [];
+    let failed = 0;
+    for (const f of list) {
+      try { added.push(newItem(await downscale(f, 1440), 'plan')); } catch (e) { failed++; }
+    }
+    if (added.length) {
+      clearExamples();
+      added.forEach((it) => state.items.set(it.id, it));
+      state.plan = added.map((i) => i.id).concat(state.plan);
+      render();
+      await saveItems(added);
+      await saveOrder();
+    }
+    showToast(failed
+      ? `${added.length}장을 넣었어요. ${failed}장은 열 수 없었어요. JPG나 PNG로 바꿔서 다시 넣어 주세요.`
+      : `${added.length}장을 맨 앞에 넣었어요.`);
+  }
+
+  /* ---------- sheets ---------- */
+  let lastFocus = null;
+  function openSheet(sel) {
+    lastFocus = document.activeElement;
+    const s = $(sel);
+    s.hidden = false;
+    document.body.classList.add('locked');
+    const first = s.querySelector('[data-close]');
+    if (first) first.focus({ preventScroll: true });
+  }
+  function closeSheet() {
+    document.querySelectorAll('.sheet').forEach((s) => { s.hidden = true; });
+    document.body.classList.remove('locked');
+    if (lastFocus && lastFocus.isConnected) lastFocus.focus({ preventScroll: true });
+  }
+  document.querySelectorAll('.sheet').forEach((s) => {
+    s.addEventListener('click', (e) => { if (e.target === s || e.target.closest('[data-close]')) closeSheet(); });
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+
+  /* ---------- photo editor ---------- */
+  let edId = null;
+  function openEditor(id) {
+    if (!state.items.has(id)) return;
+    edId = id;
+    $('#edImg').src = state.items.get(id).url;
+    $('#edFrame').style.aspectRatio = RATIO[state.ratio].css;
+    resetDelete();
+    syncEditor();
+    openSheet('#editor');
+  }
+  function syncEditor() {
+    const it = state.items.get(edId);
+    const i = state.plan.indexOf(edId);
+    $('#edTitle').textContent = i >= 0 ? `올릴 사진 · ${state.plan.length - i}번째로 올림` : '게시된 사진';
+    $('#edPlanRow').hidden = i < 0;
+    const img = $('#edImg');
+    img.style.objectFit = it.fit === 'fit' ? 'contain' : 'cover';
+    img.style.objectPosition = `${it.px}% ${it.py}%`;
+    $('#edFill').setAttribute('aria-pressed', String(it.fit !== 'fit'));
+    $('#edFit').setAttribute('aria-pressed', String(it.fit === 'fit'));
+    $('#edPx').value = it.px;
+    $('#edPy').value = it.py;
+    $('#edEarlier').disabled = i <= 0;
+    $('#edLater').disabled = i < 0 || i >= state.plan.length - 1;
+  }
+  function commitEdit() {
+    render();
+    saveItems([state.items.get(edId)]);
+  }
+  function setFit(fit) { state.items.get(edId).fit = fit; syncEditor(); commitEdit(); }
+  $('#edFill').addEventListener('click', () => setFit('fill'));
+  $('#edFit').addEventListener('click', () => setFit('fit'));
+  ['px', 'py'].forEach((k) => {
+    const input = $(k === 'px' ? '#edPx' : '#edPy');
+    input.addEventListener('input', () => { state.items.get(edId)[k] = Number(input.value); syncEditor(); });
+    input.addEventListener('change', commitEdit);
+  });
+  (() => {
+    const frame = $('#edFrame');
+    let start = null;
+    frame.addEventListener('pointerdown', (e) => {
+      const it = state.items.get(edId);
+      start = { x: e.clientX, y: e.clientY, px: it.px, py: it.py, w: frame.clientWidth, h: frame.clientHeight };
+      frame.setPointerCapture(e.pointerId);
+    });
+    frame.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      const it = state.items.get(edId);
+      const clamp = (v) => Math.round(Math.min(100, Math.max(0, v)));
+      it.px = clamp(start.px - ((e.clientX - start.x) / start.w) * 150);
+      it.py = clamp(start.py - ((e.clientY - start.y) / start.h) * 150);
+      syncEditor();
+    });
+    const end = () => { if (start) { start = null; commitEdit(); } };
+    frame.addEventListener('pointerup', end);
+    frame.addEventListener('pointercancel', end);
+  })();
+  function movePlan(delta) {
+    const i = state.plan.indexOf(edId);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= state.plan.length) return;
+    [state.plan[i], state.plan[j]] = [state.plan[j], state.plan[i]];
+    render();
+    syncEditor();
+    saveOrder();
+  }
+  $('#edEarlier').addEventListener('click', () => movePlan(-1));
+  $('#edLater').addEventListener('click', () => movePlan(1));
+  $('#edPosted').addEventListener('click', () => {
+    const id = edId;
+    const it = state.items.get(id);
+    state.plan = state.plan.filter((x) => x !== id);
+    state.existing.unshift(id);
+    it.kind = 'existing';
+    render();
+    closeSheet();
+    saveItems([it]);
+    saveOrder();
+    showToast('게시된 피드 맨 앞으로 옮겼어요.');
+  });
+  function resetDelete() {
+    const b = $('#edDelete');
+    delete b.dataset.armed;
+    b.textContent = '사진 지우기';
+  }
+  $('#edDelete').addEventListener('click', () => {
+    const b = $('#edDelete');
+    if (!b.dataset.armed) {
+      b.dataset.armed = '1';
+      b.textContent = '한 번 더 누르면 지워요';
+      return;
+    }
+    const id = edId;
+    const it = state.items.get(id);
+    state.plan = state.plan.filter((x) => x !== id);
+    state.existing = state.existing.filter((x) => x !== id);
+    state.items.delete(id);
+    if (!it.example) URL.revokeObjectURL(it.url);
+    if (state.examples && ![...state.items.values()].some((x) => x.example)) state.examples = false;
+    render();
+    closeSheet();
+    if (!it.example) { deleteItems([id]); saveOrder(); }
+    showToast('사진을 지웠어요.');
+  });
+
+  /* ---------- screenshot slicer ---------- */
+  const sl = { img: null, url: null, W: 0, H: 0, ratio: '34', rows: 3, gap: 3, top: 0 };
+  function slMetrics() {
+    const g = sl.gap;
+    const colW = (sl.W - 2 * g) / 3;
+    const tileH = colW * RATIO[sl.ratio].h;
+    const maxRows = Math.max(1, Math.floor((sl.H + g) / (tileH + g)));
+    const rows = Math.max(1, Math.min(sl.rows, maxRows));
+    return { g, colW, tileH, maxRows, rows, boxH: rows * tileH + (rows - 1) * g };
+  }
+  function slRender() {
+    if (!sl.img) return;
+    const m = slMetrics();
+    sl.rows = m.rows;
+    sl.top = Math.min(Math.max(0, sl.top), Math.max(0, sl.H - m.boxH));
+    const s = $('#slImg').clientWidth / sl.W || 0;
+    const box = $('#slBox');
+    box.style.top = `${sl.top * s}px`;
+    box.style.height = `${m.boxH * s}px`;
+    const cells = $('#slCells');
+    cells.style.gap = `${m.g * s}px`;
+    cells.style.gridTemplateRows = `repeat(${m.rows}, minmax(0, 1fr))`;
+    if (cells.childElementCount !== m.rows * 3) cells.innerHTML = '<span></span>'.repeat(m.rows * 3);
+    $('#slRows').textContent = String(m.rows);
+    $('#slGap').textContent = `${m.g}px`;
+    $('#slRowsMinus').disabled = m.rows <= 1;
+    $('#slRowsPlus').disabled = m.rows >= m.maxRows;
+    $('#slGapMinus').disabled = m.g <= 0;
+    document.querySelectorAll('[data-slratio]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.slratio === sl.ratio)));
+    $('#slImport').textContent = `${m.rows * 3}장 가져오기`;
+  }
+  async function openSlicer(file) {
+    let decoded;
+    try { decoded = await decode(file); } catch (e) {
+      showToast('이 이미지는 열 수 없어요. PNG나 JPG 스크린샷을 넣어 주세요.');
+      return;
+    }
+    if (sl.url) URL.revokeObjectURL(sl.url);
+    Object.assign(sl, { img: decoded.img, url: decoded.url, W: decoded.img.naturalWidth, H: decoded.img.naturalHeight, ratio: '34' });
+    sl.gap = Math.max(1, Math.round(sl.W / 390));
+    sl.rows = 4;
+    const m = slMetrics();
+    sl.top = Math.round((sl.H - m.boxH) * 0.62);
+    $('#slReplace').checked = false;
+    $('#slReplaceRow').hidden = !state.existing.some(isReal);
+    $('#slImg').src = sl.url;
+    openSheet('#slicer');
+    requestAnimationFrame(slRender);
+  }
+  $('#slImg').addEventListener('load', slRender);
+  window.addEventListener('resize', () => { if (!$('#slicer').hidden) slRender(); });
+  document.querySelectorAll('[data-slratio]').forEach((b) => b.addEventListener('click', () => { sl.ratio = b.dataset.slratio; slRender(); }));
+  $('#slRowsMinus').addEventListener('click', () => { sl.rows -= 1; slRender(); });
+  $('#slRowsPlus').addEventListener('click', () => { sl.rows += 1; slRender(); });
+  $('#slGapMinus').addEventListener('click', () => { sl.gap = Math.max(0, sl.gap - 1); slRender(); });
+  $('#slGapPlus').addEventListener('click', () => { sl.gap = Math.min(40, sl.gap + 1); slRender(); });
+  const nudge = () => Math.max(1, Math.round(sl.W / 400));
+  $('#slUp').addEventListener('click', () => { sl.top -= nudge(); slRender(); });
+  $('#slDown').addEventListener('click', () => { sl.top += nudge(); slRender(); });
+  (() => {
+    const box = $('#slBox');
+    let start = null;
+    box.addEventListener('pointerdown', (e) => {
+      start = { y: e.clientY, top: sl.top, s: $('#slImg').clientWidth / sl.W };
+      box.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    box.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      sl.top = start.top + (e.clientY - start.y) / start.s;
+      slRender();
+    });
+    const end = () => { start = null; sl.top = Math.round(sl.top); };
+    box.addEventListener('pointerup', end);
+    box.addEventListener('pointercancel', end);
+    $('#slStage').addEventListener('click', (e) => {
+      if (e.target.closest('#slBox')) return;
+      const r = $('#slImg').getBoundingClientRect();
+      const s = r.width / sl.W;
+      sl.top = Math.round((e.clientY - r.top) / s - slMetrics().boxH / 2);
+      slRender();
+    });
+  })();
+  $('#slImport').addEventListener('click', async () => {
+    const btn = $('#slImport');
+    btn.disabled = true;
+    try {
+      const m = slMetrics();
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(m.colW));
+      c.height = Math.max(1, Math.round(m.tileH));
+      const x = c.getContext('2d');
+      const out = [];
+      for (let r = 0; r < m.rows; r++) {
+        for (let col = 0; col < 3; col++) {
+          x.clearRect(0, 0, c.width, c.height);
+          x.drawImage(sl.img, col * (m.colW + m.g), sl.top + r * (m.tileH + m.g), m.colW, m.tileH, 0, 0, c.width, c.height);
+          out.push(newItem(await toBlob(c, 0.92), 'existing'));
+        }
+      }
+      clearExamples();
+      let removed = [];
+      if ($('#slReplace').checked) {
+        removed = state.existing.slice();
+        removed.forEach((id) => { URL.revokeObjectURL(state.items.get(id).url); state.items.delete(id); });
+        state.existing = [];
+      }
+      out.forEach((it) => state.items.set(it.id, it));
+      state.existing = state.existing.concat(out.map((i) => i.id));
+      render();
+      closeSheet();
+      if (removed.length) await deleteItems(removed);
+      await saveItems(out);
+      await saveOrder();
+      showToast(`${out.length}장을 게시된 피드 ${removed.length ? '자리에 넣었어요' : '뒤에 붙였어요'}.`);
+    } catch (e) {
+      showToast('자르는 중에 문제가 생겼어요. 다시 시도해 주세요.');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ---------- Instagram connection (token pasted from the Meta App Dashboard) ---------- */
+  const IG_BASE = 'https://graph.instagram.com';
+  const IG_MAX_POSTS = 60;
+  const DAY = 24 * 3600 * 1000;
+  let ig = null; // { token, username, refreshedAt, expiresAt }
+
+  function igRead() {
+    try { return JSON.parse(localStorage.getItem('fgp-ig') || 'null'); } catch (e) { return null; }
+  }
+  function igWrite() {
+    try {
+      if (ig) localStorage.setItem('fgp-ig', JSON.stringify(ig));
+      else localStorage.removeItem('fgp-ig');
+    } catch (e) { /* storage blocked: the connection lasts for this visit only */ }
+  }
+  const igError = (kind, message) => Object.assign(new Error(message || kind), { kind });
+  async function igFetch(url) {
+    let res;
+    try { res = await fetch(url, { cache: 'no-store' }); } catch (e) { throw igError('network'); }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.error) {
+      const err = body.error || {};
+      throw igError(err.code === 190 ? 'token' : 'api', err.message);
+    }
+    return body;
+  }
+  function igGet(path, params) {
+    const u = new URL(IG_BASE + path);
+    Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+    return igFetch(u.toString());
+  }
+  function igShowError(e) {
+    const box = $('#igError');
+    if (!e) { box.hidden = true; return; }
+    box.textContent = e.kind === 'network'
+      ? '인스타그램 서버에 연결하지 못했어요. claude.ai에 게시된 페이지에서는 보안 규칙 때문에 이 기능이 막혀 있어요. 직접 올린 주소에서 열어 주세요. 그 경우가 아니라면 인터넷 연결을 확인해 주세요.'
+      : e.kind === 'token'
+        ? '토큰이 맞지 않거나 만료됐어요. Meta 개발자 대시보드에서 토큰을 새로 발급해서 붙여넣어 주세요.'
+        : `Instagram이 요청을 거절했어요. (${e.message})`;
+    box.hidden = false;
+  }
+  function igRender() {
+    $('#igOff').hidden = !!ig;
+    $('#igOn').hidden = !ig;
+    $('#igQuickReload').hidden = !ig;
+    if (!ig) return;
+    $('#igUser').textContent = `@${ig.username}`;
+    $('#igExpiry').textContent = ig.expiresAt
+      ? `토큰 만료 ${new Date(ig.expiresAt).toLocaleDateString('ko-KR')} (열 때마다 자동 연장)`
+      : '토큰은 하루 뒤부터 열 때마다 자동 연장돼요';
+  }
+
+  // Long-lived tokens last 60 days and can be refreshed once they are at least 24 hours old.
+  async function igMaybeRefresh() {
+    if (!ig || Date.now() - ig.refreshedAt < 3 * DAY) return;
+    const r = await igGet('/refresh_access_token', { grant_type: 'ig_refresh_token', access_token: ig.token });
+    ig.token = r.access_token;
+    ig.refreshedAt = Date.now();
+    if (r.expires_in) ig.expiresAt = Date.now() + r.expires_in * 1000;
+    igWrite();
+    igRender();
+  }
+
+  async function igImport() {
+    const posts = [];
+    let page = await igGet('/me/media', {
+      fields: 'id,media_type,media_url,thumbnail_url,timestamp',
+      limit: '50',
+      access_token: ig.token,
+    });
+    for (;;) {
+      posts.push(...(page.data || []));
+      const next = page.paging && page.paging.next;
+      if (!next || posts.length >= IG_MAX_POSTS) break;
+      page = await igFetch(next);
+    }
+    // Keep each post's crop settings across reloads.
+    const prev = new Map();
+    for (const it of state.items.values()) if (it.igId) prev.set(it.igId, it);
+    const fresh = [];
+    for (const m of posts.slice(0, IG_MAX_POSTS)) {
+      const src = m.media_type === 'VIDEO' ? (m.thumbnail_url || m.media_url) : (m.media_url || m.thumbnail_url);
+      if (!src) continue;
+      const old = prev.get(m.id);
+      fresh.push({
+        id: `ig-${m.id}`, kind: 'existing', remote: src, url: src, igId: m.id,
+        fit: old ? old.fit : 'fill', px: old ? old.px : 50, py: old ? old.py : 50,
+      });
+    }
+    clearExamples();
+    const keep = new Set(fresh.map((i) => i.id));
+    const removed = state.existing.filter((id) => !keep.has(id));
+    removed.forEach((id) => {
+      const it = state.items.get(id);
+      if (it && it.blob) URL.revokeObjectURL(it.url);
+      state.items.delete(id);
+    });
+    fresh.forEach((it) => state.items.set(it.id, it));
+    state.existing = fresh.map((i) => i.id);
+    render();
+    if (removed.length) await deleteItems(removed.filter((id) => !id.startsWith('ex-')));
+    await saveItems(fresh);
+    await saveOrder();
+    return fresh.length;
+  }
+
+  async function igConnect() {
+    const token = $('#igToken').value.trim();
+    if (!token) { $('#igToken').focus(); return; }
+    const btn = $('#igConnect');
+    btn.disabled = true;
+    igShowError(null);
+    try {
+      const me = await igGet('/me', { fields: 'user_id,username', access_token: token });
+      ig = { token, username: me.username, refreshedAt: Date.now(), expiresAt: null };
+      igWrite();
+      $('#igToken').value = '';
+      igRender();
+      const n = await igImport();
+      showToast(`@${ig.username}의 게시물 ${n}개를 불러왔어요.`);
+    } catch (e) {
+      igShowError(e);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  async function igReload(quiet) {
+    if (!ig) return;
+    igShowError(null);
+    try {
+      await igMaybeRefresh();
+      const n = await igImport();
+      if (!quiet) showToast(`게시물 ${n}개를 다시 불러왔어요.`);
+    } catch (e) {
+      igShowError(e);
+    }
+  }
+  function igInit() {
+    ig = igRead();
+    igRender();
+    // Instagram image links expire, so pull fresh ones every time the page opens.
+    if (ig) igReload(true);
+  }
+  $('#igConnect').addEventListener('click', igConnect);
+  $('#igToken').addEventListener('keydown', (e) => { if (e.key === 'Enter') igConnect(); });
+  $('#igReload').addEventListener('click', () => igReload(false));
+  $('#igQuickReload').addEventListener('click', () => igReload(false));
+  $('#igDisconnect').addEventListener('click', () => {
+    ig = null;
+    igWrite();
+    igRender();
+    igShowError(null);
+    showToast('연결을 끊었어요. 불러온 사진은 그대로 남지만, 며칠 지나면 이미지가 안 보일 수 있어요.');
+  });
+
+  /* ---------- top-level controls ---------- */
+  $('#addPhotosBtn').addEventListener('click', () => $('#pickPhotos').click());
+  $('#addShotBtn').addEventListener('click', () => $('#pickShot').click());
+  $('#pickPhotos').addEventListener('change', (e) => { addPhotos(e.target.files); e.target.value = ''; });
+  $('#pickShot').addEventListener('change', (e) => { if (e.target.files[0]) openSlicer(e.target.files[0]); e.target.value = ''; });
+  document.querySelectorAll('[data-ratio]').forEach((b) => b.addEventListener('click', () => {
+    state.ratio = b.dataset.ratio; applySettings(); saveSettings(); render();
+  }));
+  $('#badges').addEventListener('change', (e) => { state.badges = e.target.checked; saveSettings(); render(); });
+  $('#clearExamples').addEventListener('click', () => { clearExamples(); render(); });
+  $('#clearAll').addEventListener('click', async () => {
+    const b = $('#clearAll');
+    if (!b.dataset.armed) {
+      b.dataset.armed = '1';
+      b.textContent = '한 번 더 누르면 모두 지워요';
+      setTimeout(() => { delete b.dataset.armed; b.textContent = '모든 사진 지우기'; }, 4000);
+      return;
+    }
+    delete b.dataset.armed;
+    b.textContent = '모든 사진 지우기';
+    for (const it of state.items.values()) if (!it.example) URL.revokeObjectURL(it.url);
+    state.items.clear();
+    state.plan = [];
+    state.existing = [];
+    state.examples = false;
+    render();
+    await write((items, meta) => { items.clear(); meta.clear(); });
+    showToast('모든 사진을 지웠어요.');
+  });
+
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault();
+      document.body.classList.add('dropping');
+    }
+  });
+  window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+  window.addEventListener('drop', (e) => {
+    document.body.classList.remove('dropping');
+    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    addPhotos(e.dataTransfer.files);
+  });
+  window.addEventListener('paste', (e) => {
+    const f = Array.from((e.clipboardData && e.clipboardData.files) || []).find((x) => x.type.startsWith('image/'));
+    if (f) { e.preventDefault(); openSlicer(f); }
+  });
+
+  let toastTimer;
+  function showToast(msg, sticky) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    if (!sticky) toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
+  }
+
+  load();
+})();
+</script>
+
+</body>
+</html>
